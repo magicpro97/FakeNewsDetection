@@ -3,3 +3,5 @@ pandas~=2.2.3
 transformers~=4.50.0
 scikit-learn~=1.6.1
 tf-keras
+openai~=1.68.2
+tqdm~=4.67.1
