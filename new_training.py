@@ -6,13 +6,18 @@ import string
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
+from tensorflow.keras.layers import Bidirectional
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Embedding, LSTM
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
+from tensorflow.keras.models import load_model
+import requests
+
+
+# Tải danh sách stopwords từ VietAI GitHub
+url = "https://raw.githubusercontent.com/stopwords/vietnamese-stopwords/master/vietnamese-stopwords.txt"
+stop_words_vietnamese = set(requests.get(url).text.split("\n"))
 
 # Đọc dữ liệu tin thật
 df_real = pd.read_csv("./data/vnexpress_dataset.csv")
@@ -30,12 +35,13 @@ df = df.dropna(subset=["Content"])
 
 
 def clean_text(text):
-    text = text.lower()  # Chuyển về chữ thường
-    text = re.sub(r'\d+', '', text)  # Loại bỏ số
-    text = text.translate(str.maketrans(
-        '', '', string.punctuation))  # Loại bỏ dấu câu
-    text = re.sub(r'\s+', ' ', text).strip()  # Loại bỏ khoảng trắng thừa
-    return text
+    text = text.lower()
+    text = re.sub(r'\d+', '', text)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    text = re.sub(r'\s+', ' ', text).strip()
+    words = text.split()
+    words = [word for word in words if word not in stop_words_vietnamese]
+    return " ".join(words)
 
 
 df["Content"] = df["Content"].apply(clean_text)
@@ -48,21 +54,20 @@ tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train)
 
 # Tokenization với LSTM (Deep Learning)
-
 X_train_seq = tokenizer.texts_to_sequences(X_train)
 X_test_seq = tokenizer.texts_to_sequences(X_test)
 
-max_length = 200  # Giới hạn độ dài của mỗi văn bản
+max_length = 500  # Giới hạn độ dài của mỗi văn bản
 X_train_pad = pad_sequences(X_train_seq, maxlen=max_length, padding="post")
 X_test_pad = pad_sequences(X_test_seq, maxlen=max_length, padding="post")
 
 # Deep Learning với LSTM
-
 model = Sequential([
     Embedding(input_dim=10000, output_dim=128, input_length=max_length),
-    LSTM(64, return_sequences=True),
-    LSTM(32),
+    Bidirectional(LSTM(64, return_sequences=True)),  # Bi-LSTM
+    Bidirectional(LSTM(32)),
     Dropout(0.5),
+    Dense(16, activation="relu"),  # Thêm một hidden layer để học tốt hơn
     Dense(1, activation="sigmoid")
 ])
 
@@ -73,16 +78,17 @@ model.compile(loss="binary_crossentropy",
 model.fit(X_train_pad, y_train, epochs=5, batch_size=32,
           validation_data=(X_test_pad, y_test))
 
-# Kiểm tra mô hình
 
+# Lưu mô hình dưới dạng file .keras
+model.save("./model/fake_news_model_LSMT.keras")
+
+# Kiểm tra mô hình
 y_pred_prob = model.predict(X_test_pad)
 y_pred = (y_pred_prob > 0.5).astype(int)
-
 print(classification_report(y_test, y_pred))
 
+
 # Dự đoán tin giả
-
-
 def predict_fake_news(text):
     text = clean_text(text)
     text_seq = tokenizer.texts_to_sequences([text])
@@ -97,8 +103,8 @@ def predict_fake_news(text):
 
 
 # Ví dụ kiểm tra tin tức
-news_real = f"Thủ tướng Phạm Minh Chính cho biết Việt Nam luôn coi trọng hợp tác với EU và đề nghị EU sớm hoàn tất phê chuẩn Hiệp định Bảo hộ đầu tư Việt Nam-EU."
-news_fake = f"Nhà khoa học Việt Nam chế tạo thành công máy phát điện vĩnh cửu không cần nhiên liệu, có thể cung cấp điện miễn phí cho toàn bộ đất nước."
+news_real = f"Công ty của diễn viên hài Thu Trang phải trả 1,3 tỷ đồng cho đối tác"
+news_fake = f"Công ty của diễn viên hài Huy Pham phải trả 15 tỷ đồng cho đối tác"
 
 print(predict_fake_news(news_real))
 print(predict_fake_news(news_fake))
