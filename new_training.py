@@ -12,6 +12,8 @@ from tensorflow.keras.layers import Dense, Dropout, Embedding, LSTM
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.regularizers import l2
 import requests
 
 
@@ -47,36 +49,53 @@ def clean_text(text):
 df["Content"] = df["Content"].apply(clean_text)
 
 # Chia dữ liệu train/test
-X_train, X_test, y_train, y_test = train_test_split(
-    df["Content"], df["label"], test_size=0.2, random_state=42, stratify=df["label"])
+X_train, X_temp, y_train, y_temp = train_test_split(
+    df["Content"], df["label"], test_size=0.3, random_state=42, stratify=df["label"])
 
-tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
-tokenizer.fit_on_texts(X_train)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp)
+
 
 # Tokenization với LSTM (Deep Learning)
+tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
+tokenizer.fit_on_texts(X_train)  # Chỉ fit trên tập train
+
+# Chuyển văn bản thành chuỗi số
 X_train_seq = tokenizer.texts_to_sequences(X_train)
+X_val_seq = tokenizer.texts_to_sequences(X_val)
 X_test_seq = tokenizer.texts_to_sequences(X_test)
 
-max_length = 500  # Giới hạn độ dài của mỗi văn bản
+# Padding
+max_length = 500
 X_train_pad = pad_sequences(X_train_seq, maxlen=max_length, padding="post")
+X_val_pad = pad_sequences(X_val_seq, maxlen=max_length, padding="post")
 X_test_pad = pad_sequences(X_test_seq, maxlen=max_length, padding="post")
 
 # Deep Learning với LSTM
 model = Sequential([
     Embedding(input_dim=10000, output_dim=128, input_length=max_length),
-    Bidirectional(LSTM(64, return_sequences=True)),  # Bi-LSTM
-    Bidirectional(LSTM(32)),
+    # L2 Regularization
+    Bidirectional(LSTM(64, return_sequences=True,
+                  kernel_regularizer=l2(0.01))),
+    Bidirectional(LSTM(32, kernel_regularizer=l2(0.01))),
     Dropout(0.5),
-    Dense(16, activation="relu"),  # Thêm một hidden layer để học tốt hơn
+    # Thêm một hidden layer để học tốt hơn
+    Dense(16, activation="relu", kernel_regularizer=l2(0.01)),
     Dense(1, activation="sigmoid")
 ])
 
 model.compile(loss="binary_crossentropy",
               optimizer="adam", metrics=["accuracy"])
 
+early_stopping = EarlyStopping(
+    monitor='val_loss', patience=3, restore_best_weights=True)
+
+# Dùng Early Stopping để mô hình tự động dừng khi không còn cải thiện.
+# early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+
 # Huấn luyện mô hình
-model.fit(X_train_pad, y_train, epochs=5, batch_size=32,
-          validation_data=(X_test_pad, y_test))
+model.fit(X_train_pad, y_train, epochs=5, batch_size=64,
+          validation_data=(X_val_pad, y_val))
 
 
 # Lưu mô hình dưới dạng file .keras
