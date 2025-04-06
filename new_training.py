@@ -14,6 +14,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.regularizers import l2
+import matplotlib.pyplot as plt
 import requests
 
 
@@ -92,9 +93,7 @@ early_stopping = EarlyStopping(
 
 # Dùng Early Stopping để mô hình tự động dừng khi không còn cải thiện.
 # early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-
-# Huấn luyện mô hình
-model.fit(X_train_pad, y_train, epochs=5, batch_size=64,
+history = model.fit(X_train_pad, y_train, epochs=10, batch_size=64,
           validation_data=(X_val_pad, y_val))
 
 
@@ -122,8 +121,38 @@ def predict_fake_news(text):
 
 
 # Ví dụ kiểm tra tin tức
-news_real = f"Công ty của diễn viên hài Thu Trang phải trả 1,3 tỷ đồng cho đối tác"
+news_real = f"Thủ tướng Phạm Minh Chính cho biết Việt Nam luôn coi trọng hợp tác với EU và đề nghị EU sớm hoàn tất phê chuẩn Hiệp định Bảo hộ đầu tư Việt Nam-EU."
 news_fake = f"Công ty của diễn viên hài Huy Pham phải trả 15 tỷ đồng cho đối tác"
 
 print(predict_fake_news(news_real))
 print(predict_fake_news(news_fake))
+
+# Lấy dữ liệu loss và accuracy từ history
+train_loss = history.history["loss"]
+val_loss = history.history["val_loss"]
+train_acc = history.history["accuracy"]
+val_acc = history.history["val_accuracy"]
+
+epochs = range(1, len(train_loss) + 1)
+
+# Vẽ Loss Curve
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
+plt.plot(epochs, train_loss, "b", label="Training Loss")
+plt.plot(epochs, val_loss, "r", label="Validation Loss")
+plt.title("Loss Curve")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+
+# Vẽ Accuracy Curve
+plt.subplot(1, 2, 2)
+plt.plot(epochs, train_acc, "b", label="Training Accuracy")
+plt.plot(epochs, val_acc, "r", label="Validation Accuracy")
+plt.title("Accuracy Curve")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend()
+
+plt.show()
