@@ -2,6 +2,7 @@ import os
 import pickle
 import joblib
 import numpy as np
+import pandas as pd
 import streamlit as st
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -9,32 +10,55 @@ import seaborn as sns
 from pathlib import Path
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, average_precision_score
 from tf_keras.src.saving.object_registration import register_keras_serializable
+from transformers import AutoTokenizer
+from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode
+from vnexpress_crawler import main as crawl_main
 
 
+tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
 # Set page configuration
 st.set_page_config(
     page_title="Fake News Detector",
     page_icon="📰",
-    layout="centered"
+    layout="wide"
 )
-
 
 # Define custom layers for model loading
 @register_keras_serializable()
 class CustomPhoBERTLayer(tf.keras.layers.Layer):
-    def __init__(self, phobert_model=None, **kwargs):
-        super(CustomPhoBERTLayer, self).__init__(**kwargs)
-        self.phobert = phobert_model
-        self.phobert_name = "vinai/phobert-base"
-        if self.phobert is None:
+    def __init__(self,
+                 phobert_name="vinai/phobert-base",
+                 phobert_model=None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.phobert_name = phobert_name
+        if phobert_model is None:
             from transformers import TFAutoModel
             self.phobert = TFAutoModel.from_pretrained(self.phobert_name)
             self.phobert.trainable = False
+        else:
+            self.phobert = phobert_model
 
     def call(self, inputs):
         input_ids, attention_mask = inputs
-        output = self.phobert(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return output
+        # returns last_hidden_state
+        return self.phobert(
+            input_ids=input_ids,
+            attention_mask=attention_mask
+        )[0]
+
+    def get_config(self):
+        config = super().get_config()
+        # inject your custom arg
+        config.update({
+            "phobert_name": self.phobert_name,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        # extract your arg before passing the rest
+        return cls(**config)
 
 
 @register_keras_serializable()
@@ -45,7 +69,7 @@ class CLSTokenExtractor(tf.keras.layers.Layer):
 
 def load_models():
     """Load available models from the ./data folder"""
-    model_dir = Path("./data")
+    model_dir = Path("./model")
     models = {}
 
     if not model_dir.exists():
@@ -110,41 +134,110 @@ def main():
     st.title("Fake News Detection")
     st.markdown("This application helps you identify potential fake news articles.")
 
-    models = load_models()
+    tab1, tab2, tab3 = st.tabs(["Prediction", "Dataset Visualization", "Data Crawling"])
 
-    if not models:
-        st.warning("No models found in the ./data folder.")
-        return
+    with tab1:
+        models = load_models()
 
-    selected_model_name = st.selectbox("Select a model", list(models.keys()))
-    selected_model_path = models[selected_model_name]
+        if not models:
+            st.warning("No models found in the ./data folder.")
+            return
 
-    with st.spinner("Loading model..."):
-        model = load_model(selected_model_path)
+        selected_model_name = st.selectbox("Select a model", list(models.keys()))
+        selected_model_path = models[selected_model_name]
 
-    if model is None:
-        st.error("Failed to load the model.")
-        return
+        with st.spinner("Loading model..."):
+            model = load_model(selected_model_path)
 
-    st.subheader("Enter News Text")
-    news_text = st.text_area("Paste the news article text here:", height=200)
+        if model is None:
+            st.error("Failed to load the model.")
+            return
 
-    if st.button("Predict"):
-        if not news_text:
-            st.warning("Please enter some text to analyze.")
+        st.subheader("Enter News Text")
+        news_text = st.text_area("Paste the news article text here:", height=200)
+
+        if st.button("Predict"):
+            if not news_text:
+                st.warning("Please enter some text to analyze.")
+            else:
+                with st.spinner("Analyzing..."):
+                    # ─── Tokenize ─────────────────────────────────────────────────────
+                    inputs = tokenizer(
+                        news_text,
+                        return_tensors="tf",
+                        padding="max_length",
+                        truncation=True,
+                        max_length=256,
+                    )
+
+                    # ─── Predict ──────────────────────────────────────────────────────
+                    # your model takes a dict of tensors, not a raw string
+                    probs = model.predict({
+                        "input_ids":    inputs["input_ids"],
+                        "attention_mask": inputs["attention_mask"],
+                    })
+                    # if your final layer is Dense(1, activation="sigmoid")
+                    prob = tf.squeeze(probs).numpy()
+
+                    # ─── Display ──────────────────────────────────────────────────────
+                    if prob > 0.5:
+                        st.error(f"📢 FAKE NEWS (p={prob:.2f})")
+                    else:
+                        st.success(f"✅ REAL NEWS (p={prob:.2f})")
+
+        if st.button("Evaluate Model"):
+            X_test = np.random.rand(100, 256)  # Replace with actual test data
+            y_test = np.random.randint(0, 2, 100)  # Replace with actual labels
+            evaluate_model(model, X_test, y_test)
+
+    with tab2:
+        st.title("Real vs. Generated Fake News")
+        st.markdown("This section allows you to visualize the dataset, viewing real news and generated fake news.")
+
+        real_df = pd.read_csv("./data/vnexpress_dataset.csv",engine="python",header=0,usecols=[0, 1, 2, 3, 4])
+        fake_df = pd.read_csv("./data/vnexpress_fake_dataset_enhance.csv",engine="python",header=0,usecols=[0, 1, 2, 3, 4])
+
+        # 2) Build AgGrid options for single‐row selection
+        gb = GridOptionsBuilder.from_dataframe(real_df)
+        gb.configure_selection("single")  
+        grid_opts = gb.build()
+
+        # 3) Render the grid
+        grid_response = AgGrid(
+            real_df,
+            gridOptions=grid_opts,
+            height=300,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED, 
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+        )
+
+        # 4) Grab the selected row
+        rows = grid_response["selected_rows"]
+        if type(rows) == pd.core.frame.DataFrame:
+            records = rows.to_dict(orient="records")
+            st.markdown("**You clicked on:**")
+            st.json(records, expanded=False)
+
+            # 5) Show fakes matching this real id
+            sel_id = records[0]["Link"]
+            st.subheader("Generated Fakes")
+            fakes = fake_df[fake_df["Link"] == sel_id]
+            if fakes.empty:
+                st.write("No generated fakes for this article.")
+            else:
+                st.dataframe(fakes)
         else:
-            with st.spinner("Analyzing..."):
-                prediction = model.predict([news_text])[0]
-                if prediction == 1:
-                    st.error("📢 This appears to be FAKE NEWS!")
-                else:
-                    st.success("✅ This appears to be REAL NEWS!")
+            st.write("Click on a real‑news row above to see its generated fakes.")
 
-    if st.button("Evaluate Model"):
-        X_test = np.random.rand(100, 256)  # Replace with actual test data
-        y_test = np.random.randint(0, 2, 100)  # Replace with actual labels
-        evaluate_model(model, X_test, y_test)
-
+    with tab3:
+        st.title("Data Crawling")
+        st.markdown("This section allows you to crawl data from VNExpress.")
+        if st.button("Crawl Data"):
+            with st.spinner("Crawling..."):
+                result = crawl_main()
+                st.write(f"Crawled {len(result['all_data'])} articles in {result['total_time']:.2f} seconds, and saved to {result['CSV_FILE']}")
+                st.write("Articles Crawled:")
+                st.dataframe(result['all_data'])
 
 if __name__ == "__main__":
     main()
