@@ -174,7 +174,7 @@ def main():
     total_time = time.time() - start_time
     print(f"\n✅ Completed crawling in {total_time:.2f} seconds")
     print(f"✅ Added {len(all_data)} new articles to {CSV_FILE}")
-    return {"all_data": all_data, "total_time": total_time, "categories": categories}
+    return {"all_data": all_data, "total_time": total_time, "categories": categories, "CSV_FILE": CSV_FILE}
 
 
 if __name__ == "__main__":

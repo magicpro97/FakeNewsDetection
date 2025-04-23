@@ -31,7 +31,7 @@ def job():
     logging.info("Starting daily crawl…")
     try:
         result = crawl_main()
-        logging.info(f"✅ Crawled {len(result['all_data'])} articles in {result['total_time']:.2f}s")
+        logging.info(f"✅ Crawled {len(result['all_data'])} articles with a total of {len(result['categories'])} categories in {result['total_time']:.2f}s, saved in {result['CSV_FILE']}")
     except Exception as e:
         logging.exception("❌ Crawling failed")
 

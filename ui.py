@@ -368,7 +368,7 @@ def main():
         if st.button("Crawl Data"):
             with st.spinner("Crawling..."):
                 result = crawl_main()
-                st.write(f"Crawled {len(result['all_data'])} articles in {result['total_time']:.2f} seconds, and saved to {result['CSV_FILE']}")
+                st.write(f"Crawled {len(result['all_data'])} articles with a total of {len(result['categories'])} categories in {result['total_time']:.2f} seconds, and saved to {result['CSV_FILE']}")
                 st.write("Articles Crawled:")
                 st.dataframe(result['all_data'])
 
