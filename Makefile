@@ -55,3 +55,11 @@ classify:
 ## Launch the Streamlit UI
 ui:
 	$(ACTIVATE) && streamlit run ui.py
+
+## Auto-run daily crawler
+daily-crawl:
+	$(ACTIVATE) && $(PYTHON) daily_vnexpress_crawler.py
+
+## Train LSMT Model
+train-lstm:
+	$(ACTIVATE) && $(PYTHON) new_training.py

@@ -60,6 +60,12 @@ X_val, X_test, y_val, y_test = train_test_split(
 # Tokenization với LSTM (Deep Learning)
 tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train)  # Chỉ fit trên tập train
+import pickle
+
+# after tokenizer.fit_on_texts(X_train):
+with open("./data/lstm_tokenizer.pkl", "wb") as f:
+    pickle.dump(tokenizer, f)
+print("✅ Saved LSTM tokenizer to ./data/lstm_tokenizer.pkl")
 
 # Chuyển văn bản thành chuỗi số
 X_train_seq = tokenizer.texts_to_sequences(X_train)
