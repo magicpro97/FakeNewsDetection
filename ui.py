@@ -131,8 +131,8 @@ def evaluate_model(model, X_test, y_test):
 
 
 def main():
-    st.title("Fake News Detection")
-    st.markdown("This application helps you identify potential fake news articles.")
+    st.title("Vietnamese Fake News Detector")
+    st.markdown("This application helps you identify potential Vietnamese fake news articles.")
 
     tab1, tab2, tab3 = st.tabs(["Prediction", "Dataset Visualization", "Data Crawling"])
 

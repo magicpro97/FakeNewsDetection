@@ -20,3 +20,4 @@ tensorboard~=2.19.0
 colorama~=0.4.6
 imbalanced-learn~=0.10
 streamlit-aggrid
+apscheduler
